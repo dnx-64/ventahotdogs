@@ -80,7 +80,7 @@
     </aside>
   </main>
 
-  <!-- MODAL DE COBRO -->
+  <!-- MODAL DE COBRO (2 pasos) -->
   <div class="modal" id="payModal" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-head">
@@ -91,31 +91,138 @@
         <button class="btn ghost" id="btnPayClose">Cerrar</button>
       </div>
 
-      <div class="row-wrap" style="margin-top:10px;">
+      <!-- PASO 1 -->
+      <div id="payStep1" style="margin-top:10px;">
         <div class="field">
           <div class="label">¿Con cuánto paga?</div>
           <input id="payWith" type="number" step="0.01" placeholder="Ej. 100.00" inputmode="decimal" />
         </div>
 
-        <div class="field">
-          <div class="label">Cambio</div>
-          <input id="payChange" disabled />
+        <div class="btns" style="margin-top:10px; justify-content:flex-end;">
+          <button class="btn primary" id="btnPayNext">Siguiente</button>
+        </div>
+
+        <div class="smallnote" style="margin-top:8px;">
+          Escribe el monto y dale en “Siguiente”.
         </div>
       </div>
 
-      <div class="btns" style="margin-top:10px;">
-        <button class="btn primary" id="btnConfirmPay">Confirmar cobro</button>
-      </div>
+      <!-- PASO 2 -->
+      <div id="payStep2" style="margin-top:10px; display:none;">
+        <div class="row-wrap" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Cambio</div>
+            <input id="payChange" disabled />
+          </div>
+        </div>
 
-      <div class="smallnote" style="margin-top:8px;">
-        Si el pago es exacto, el cambio será $0.00.
+        <div class="btns" style="margin-top:10px; justify-content:flex-end;">
+          <button class="btn ghost" id="btnPayBack">Atrás</button>
+          <button class="btn primary" id="btnConfirmPay">Confirmar cobro</button>
+        </div>
+
+        <div class="smallnote" id="payNote" style="margin-top:8px;">
+          Si el pago es exacto, el cambio será $0.00.
+        </div>
       </div>
     </div>
   </div>
 
   <script src="js/db.js"></script>
   <script src="js/app.js"></script>
+
+  <!-- Control del paso extra (sin romper el guardado del app.js) -->
   <script>
+    (function(){
+      const $ = (id)=>document.getElementById(id);
+
+      const modal = $("payModal");
+      const btnClose = $("btnPayClose");
+
+      const step1 = $("payStep1");
+      const step2 = $("payStep2");
+
+      const payWith = $("payWith");
+      const payChange = $("payChange");
+      const payNote = $("payNote");
+
+      const btnNext = $("btnPayNext");
+      const btnBack = $("btnPayBack");
+      const btnConfirm = $("btnConfirmPay");
+
+      function showStep(n){
+        step1.style.display = (n===1) ? "block" : "none";
+        step2.style.display = (n===2) ? "block" : "none";
+      }
+
+      function moneyTextToCents(txt){
+        // "$1,234.50" -> 123450
+        const s = String(txt||"0")
+          .replace(/\$/g,"")
+          .replace(/\s/g,"")
+          .replace(/,/g,"");
+        const n = Number(s);
+        return Number.isNaN(n) ? 0 : Math.round(n*100);
+      }
+
+      function inputToCents(v){
+        const n = Number(String(v||"0").replace(",","."));
+        return Number.isNaN(n) ? 0 : Math.round(n*100);
+      }
+
+      function centsToMoney(c){
+        return "$" + (c/100).toFixed(2);
+      }
+
+      // Cuando se abre el modal (app.js lo abre), reiniciamos a Paso 1
+      const obs = new MutationObserver(()=>{
+        if (!modal) return;
+        const open = modal.classList.contains("show");
+        if (open){
+          showStep(1);
+          if (payChange) payChange.value = "";
+          if (payNote) payNote.textContent = "Escribe el monto y dale en “Siguiente”.";
+          if (btnConfirm) btnConfirm.disabled = false;
+          setTimeout(()=>payWith && payWith.focus(), 60);
+        }
+      });
+      if (modal) obs.observe(modal, { attributes:true, attributeFilter:["class"] });
+
+      if (btnClose){
+        btnClose.addEventListener("click", ()=> showStep(1));
+      }
+
+      if (btnNext){
+        btnNext.addEventListener("click", ()=>{
+          const totalText = document.getElementById("total")?.textContent || "$0.00";
+          const totalCents = moneyTextToCents(totalText);
+          const paidCents = inputToCents(payWith?.value);
+
+          const diff = paidCents - totalCents;
+
+          if (diff >= 0){
+            payChange.value = centsToMoney(diff);
+            if (payNote) payNote.textContent = "Revisa el cambio y confirma el cobro.";
+            if (btnConfirm) btnConfirm.disabled = false;
+          } else {
+            payChange.value = centsToMoney(Math.abs(diff));
+            if (payNote) payNote.textContent = "El pago no alcanza. Regresa y ajusta el monto.";
+            if (btnConfirm) btnConfirm.disabled = true;
+          }
+
+          showStep(2);
+        });
+      }
+
+      if (btnBack){
+        btnBack.addEventListener("click", ()=>{
+          showStep(1);
+          setTimeout(()=>payWith && payWith.focus(), 60);
+        });
+      }
+      // btnConfirmPay lo maneja app.js (guardar venta). No lo tocamos aquí.
+    })();
+
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./service-worker.js");
     }
