@@ -1,116 +1,179 @@
-// IndexedDB helper (sin librerías)
-const DB_NAME = "pos_hotdogs_db";
-const DB_VER = 1;
-
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VER);
-
-    req.onupgradeneeded = () => {
-      const db = req.result;
-
-      if (!db.objectStoreNames.contains("products")) {
-        const s = db.createObjectStore("products", { keyPath: "id" });
-        s.createIndex("byCategory", "category", { unique: false });
-        s.createIndex("byActive", "active", { unique: false });
-      }
-
-      if (!db.objectStoreNames.contains("sales")) {
-        const s = db.createObjectStore("sales", { keyPath: "id", autoIncrement: true });
-        s.createIndex("byDate", "dateKey", { unique: false }); // YYYY-MM-DD
-        s.createIndex("byMonth", "monthKey", { unique: false }); // YYYY-MM
-      }
-
-      if (!db.objectStoreNames.contains("promos")) {
-        const s = db.createObjectStore("promos", { keyPath: "id", autoIncrement: true });
-        s.createIndex("byActive", "active", { unique: false });
-      }
-    };
-
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function tx(storeName, mode, fn) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(storeName, mode);
-    const store = t.objectStore(storeName);
-    const out = fn(store);
-    t.oncomplete = () => resolve(out);
-    t.onerror = () => reject(t.error);
-  });
-}
-
-const DB = {
-  async getAll(store) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const t = db.transaction(store, "readonly");
-      const s = t.objectStore(store);
-      const req = s.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-  },
-  async put(store, value) {
-    return tx(store, "readwrite", (s) => s.put(value));
-  },
-  async add(store, value) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const t = db.transaction(store, "readwrite");
-      const s = t.objectStore(store);
-      const req = s.add(value);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  },
-  async delete(store, key) {
-    return tx(store, "readwrite", (s) => s.delete(key));
-  },
-  async clear(store) {
-    return tx(store, "readwrite", (s) => s.clear());
-  }
-};
-
-// util
-function moneyFromCents(cents) {
-  const mx = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-  return mx.format((cents || 0) / 100);
-}
-function centsFromMoneyInput(v) {
-  const n = Number.parseFloat(String(v || "").replace(",", "."));
+/* =========================
+   Utilidades de dinero
+========================= */
+function centsFromMoneyInput(v){
+  const n = Number(String(v || "0").replace(",", "."));
   if (Number.isNaN(n)) return 0;
   return Math.round(n * 100);
 }
-function nowKeys(d = new Date()) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return { dateKey: `${yyyy}-${mm}-${dd}`, monthKey: `${yyyy}-${mm}` };
+function moneyFromCents(cents){
+  return `$${(cents/100).toFixed(2)}`;
 }
 
-async function seedIfEmpty() {
+/* =========================
+   IndexedDB helper
+========================= */
+const DB = {
+  _db:null,
+
+  async open(){
+    if (this._db) return this._db;
+
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open("pos_hotdogs_db", 1);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains("products")){
+          db.createObjectStore("products", { keyPath:"id" });
+        }
+        if (!db.objectStoreNames.contains("sales")){
+          db.createObjectStore("sales", { keyPath:"id", autoIncrement:true });
+        }
+        if (!db.objectStoreNames.contains("promos")){
+          db.createObjectStore("promos", { keyPath:"id", autoIncrement:true });
+        }
+      };
+      req.onsuccess = ()=>{
+        this._db = req.result;
+        resolve(this._db);
+      };
+      req.onerror = ()=> reject(req.error);
+    });
+  },
+
+  async tx(store, mode="readonly"){
+    const db = await this.open();
+    return db.transaction(store, mode).objectStore(store);
+  },
+
+  async getAll(store){
+    const os = await this.tx(store);
+    return new Promise((resolve,reject)=>{
+      const r = os.getAll();
+      r.onsuccess = ()=> resolve(r.result || []);
+      r.onerror = ()=> reject(r.error);
+    });
+  },
+
+  async put(store, value){
+    const os = await this.tx(store,"readwrite");
+    return new Promise((resolve,reject)=>{
+      const r = os.put(value);
+      r.onsuccess = ()=> resolve();
+      r.onerror = ()=> reject(r.error);
+    });
+  },
+
+  async add(store, value){
+    const os = await this.tx(store,"readwrite");
+    return new Promise((resolve,reject)=>{
+      const r = os.add(value);
+      r.onsuccess = ()=> resolve(r.result);
+      r.onerror = ()=> reject(r.error);
+    });
+  },
+
+  async delete(store, key){
+    const os = await this.tx(store,"readwrite");
+    return new Promise((resolve,reject)=>{
+      const r = os.delete(key);
+      r.onsuccess = ()=> resolve();
+      r.onerror = ()=> reject(r.error);
+    });
+  },
+
+  async clear(store){
+    const os = await this.tx(store,"readwrite");
+    return new Promise((resolve,reject)=>{
+      const r = os.clear();
+      r.onsuccess = ()=> resolve();
+      r.onerror = ()=> reject(r.error);
+    });
+  }
+};
+
+/* =========================
+   Datos base (con imágenes)
+========================= */
+async function seedIfEmpty(){
   const products = await DB.getAll("products");
   if (products.length > 0) return;
 
-  // LISTA NUEVA (lo que te pidieron)
-  const defaults = [
-    // Hotdogs $70
-    { id: "choridoggo", name: "Choridoggo",  category: "Hotdogs", priceCents: 7000, active: true, imgDataUrl: "" },
-    { id: "hawaiano",   name: "Hawaiano",    category: "Hotdogs", priceCents: 7000, active: true, imgDataUrl: "" },
-    { id: "pastor",     name: "Al pastor",   category: "Hotdogs", priceCents: 7000, active: true, imgDataUrl: "" },
-    { id: "pizzadoggo", name: "Pizza Doggo", category: "Hotdogs", priceCents: 7000, active: true, imgDataUrl: "" },
+  const baseProducts = [
+    /* ===== HOTDOGS ===== */
+    {
+      id: "choridoggo",
+      name: "Choridoggo",
+      category: "Hotdogs",
+      priceCents: 7000,
+      active: true,
+      imgDataUrl: "assets/img/choridoggo.jpg"
+    },
+    {
+      id: "hawaiano",
+      name: "Hawaiano",
+      category: "Hotdogs",
+      priceCents: 7000,
+      active: true,
+      imgDataUrl: "assets/img/hawaiano.jpg"
+    },
+    {
+      id: "al_pastor",
+      name: "Al pastor",
+      category: "Hotdogs",
+      priceCents: 7000,
+      active: true,
+      imgDataUrl: "assets/img/al_pastor.jpg"
+    },
+    {
+      id: "pizza_doggo",
+      name: "Pizza Doggo",
+      category: "Hotdogs",
+      priceCents: 7000,
+      active: true,
+      imgDataUrl: "assets/img/pizza_doggo.jpg"
+    },
 
-    // Snacks $40
-    { id: "papas",      name: "Papas a la francesa", category: "Snacks", priceCents: 4000, active: true, imgDataUrl: "" },
-    { id: "aros",       name: "Aros de cebolla",     category: "Snacks", priceCents: 4000, active: true, imgDataUrl: "" },
+    /* ===== SNACKS ===== */
+    {
+      id: "papas_francesa",
+      name: "Papas a la francesa",
+      category: "Snacks",
+      priceCents: 4000,
+      active: true,
+      imgDataUrl: "assets/img/papas.jpg"
+    },
+    {
+      id: "aros_cebolla",
+      name: "Aros de cebolla",
+      category: "Snacks",
+      priceCents: 4000,
+      active: true,
+      imgDataUrl: "assets/img/aros.jpg"
+    },
 
-    // Refresco general $15
-    { id: "refresco",   name: "Refresco (general)",  category: "Bebidas", priceCents: 1500, active: true, imgDataUrl: "" }
+    /* ===== BEBIDAS ===== */
+    {
+      id: "refresco",
+      name: "Refresco (general)",
+      category: "Bebidas",
+      priceCents: 1500,
+      active: true,
+      imgDataUrl: "assets/img/refresco.jpg"
+    },
+
+    /* ===== EXTRAS ===== */
+    {
+      id: "extra_tocino",
+      name: "Extra tocino",
+      category: "Extras",
+      priceCents: 1000,
+      active: true,
+      imgDataUrl: "assets/img/tocino.jpg"
+    }
   ];
 
-  for (const p of defaults) await DB.put("products", p);
+  for (const p of baseProducts){
+    await DB.put("products", p);
+  }
 }
