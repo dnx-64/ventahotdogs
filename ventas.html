@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Ventas • POS Hotdogs</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/img/logo.png" alt="Logo" class="logo" />
+      <div>
+        <div class="title">Ventas</div>
+        <div class="subtitle">Reportes local</div>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <a class="btn ghost" href="index.html">Volver</a>
+      <a class="btn ghost" href="admin.html">Admin</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="card">
+      <div class="row-wrap">
+        <div class="field">
+          <div class="label">Día</div>
+          <input type="date" id="datePick" />
+        </div>
+
+        <div class="field">
+          <div class="label">Semana (ISO)</div>
+          <input type="week" id="weekPick" />
+        </div>
+
+        <div class="field">
+          <div class="label">Mes</div>
+          <input type="month" id="monthPick" />
+        </div>
+
+        <div class="field grow">
+          <div class="label">&nbsp;</div>
+          <div class="btns">
+            <button class="btn primary" id="btnByDay">Reporte día</button>
+            <button class="btn primary" id="btnByWeek">Reporte semana</button>
+            <button class="btn primary" id="btnByMonth">Reporte mes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>Resumen</h2>
+        <div class="pill" id="rangeLabel">--</div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="kpi-title">Ventas</div>
+          <div class="kpi-value" id="kpiCount">0</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-title">Total vendido</div>
+          <div class="kpi-value" id="kpiTotal">$0.00</div>
+        </div>
+      </div>
+
+      <div class="section-head" style="margin-top:14px;">
+        <h2>Por producto</h2>
+      </div>
+      <div id="byProduct"></div>
+
+      <div class="section-head" style="margin-top:14px;">
+        <h2>Ventas</h2>
+        <div class="btns">
+          <button class="btn ghost" id="btnExportCSV">Exportar CSV (Pedidos)</button>
+          <button class="btn ghost" id="btnBackupJSON">Respaldo JSON</button>
+        </div>
+      </div>
+
+      <div id="salesList"></div>
+    </div>
+  </main>
+
+  <script src="js/db.js"></script>
+  <script src="js/ventas.js"></script>
+</body>
+</html>

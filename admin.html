@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Admin • POS Hotdogs</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/img/logo.png" alt="Logo" class="logo" />
+      <div>
+        <div class="title">Admin</div>
+        <div class="subtitle">Productos • Promos</div>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <a class="btn ghost" href="index.html">Volver</a>
+      <a class="btn ghost" href="ventas.html">Ventas</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- RESET BASE -->
+    <div class="card">
+      <div class="section-head">
+        <h2>Herramientas</h2>
+        <div class="smallnote">Acciones delicadas</div>
+      </div>
+
+      <div class="row-wrap" style="margin-top:10px;">
+        <div class="field grow">
+          <div class="smallnote">
+            <b>RESET BASE</b> borra todo (productos, ventas y promos) y vuelve a cargar la lista base.
+            Úsalo solo si quieres reiniciar desde cero.
+          </div>
+        </div>
+        <div class="field">
+          <button class="btn primary" id="btnResetDb">RESET BASE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agregar producto -->
+    <div class="card">
+      <div class="section-head">
+        <h2>Agregar producto</h2>
+      </div>
+
+      <div class="row-wrap">
+        <div class="field">
+          <div class="label">Nombre</div>
+          <input id="pName" placeholder="Ej. Hawaiano" />
+        </div>
+
+        <div class="field">
+          <div class="label">Precio (MXN)</div>
+          <input id="pPrice" type="number" step="0.01" placeholder="Ej. 70.00" />
+        </div>
+
+        <div class="field">
+          <div class="label">Categoría</div>
+          <select id="pCat">
+            <option>Hotdogs</option>
+            <option>Bebidas</option>
+            <option>Snacks</option>
+            <option>Extras</option>
+            <option>Promos</option>
+          </select>
+        </div>
+
+        <div class="field grow">
+          <div class="label">Foto (opcional)</div>
+          <input id="pImg" type="file" accept="image/*" />
+        </div>
+      </div>
+
+      <div class="btns" style="margin-top:10px;">
+        <button class="btn primary" id="btnAddProduct">Agregar</button>
+      </div>
+      <div class="smallnote">Puedes dejar la foto vacía y luego cambiarla con “Editar”.</div>
+    </div>
+
+    <!-- Productos -->
+    <div class="card">
+      <div class="section-head">
+        <h2>Productos</h2>
+        <div class="smallnote">Edita precio/nombre/categoría. Desactiva si ya no lo vendes.</div>
+      </div>
+
+      <div id="productsAdmin"></div>
+    </div>
+
+    <!-- Promos -->
+    <div class="card">
+      <div class="section-head">
+        <h2>Promos (simple)</h2>
+        <div class="smallnote">Crea una promo y actívala por días. Al cobrar la eliges.</div>
+      </div>
+
+      <div class="row-wrap">
+        <div class="field">
+          <div class="label">Nombre promo</div>
+          <input id="prName" placeholder="Ej. 2 Hotdogs $120" />
+        </div>
+
+        <div class="field">
+          <div class="label">Tipo</div>
+          <select id="prType">
+            <option value="fixed_total">Total fijo</option>
+            <option value="amount_off">Descuento $</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="label">Valor (MXN)</div>
+          <input id="prValue" type="number" step="0.01" placeholder="Ej. 10.00 o 120.00" />
+        </div>
+
+        <div class="field grow">
+          <div class="label">Días activos</div>
+          <div class="days" id="daysPick"></div>
+        </div>
+      </div>
+
+      <div class="btns" style="margin-top:10px;">
+        <button class="btn primary" id="btnAddPromo">Agregar promo</button>
+      </div>
+
+      <div class="section-head" style="margin-top:14px;">
+        <h2>Lista de promos</h2>
+      </div>
+      <div id="promosAdmin"></div>
+    </div>
+  </main>
+
+  <script src="js/db.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
