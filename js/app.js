@@ -1,320 +1,469 @@
-const state = {
-  products: [],
-  promos: [],
-  category: "Hotdogs",
-  cart: new Map(), // id -> {product, qty}
-  selectedPromoId: "none",
-};
-
-const CATS = ["Hotdogs", "Bebidas", "Snacks", "Extras", "Promos"];
+/* =========================
+   POS Hotdogs - app.js (FULL)
+   - Orden fijo de categorías
+   - Carrito + promos
+   - Cobro: abrir modal + confirmar guarda venta
+========================= */
 
 function el(id){ return document.getElementById(id); }
 
-function setClock(){
+// ---------- Estado ----------
+let PRODUCTS = [];
+let PROMOS = [];
+let CART = []; // {id,name,category,priceCents,qty,imgDataUrl}
+let selectedPromoId = "";
+
+// ---------- Util ----------
+function fmt(cents){ return moneyFromCents(cents); }
+
+function inputToCents(v){
+  const n = Number(String(v || "0").replace(",", "."));
+  if (Number.isNaN(n)) return 0;
+  return Math.round(n * 100);
+}
+
+function todayKeys(){
   const d = new Date();
-  const hh = String(d.getHours()).padStart(2,"0");
-  const mm = String(d.getMinutes()).padStart(2,"0");
-  el("clock").textContent = `${hh}:${mm}`;
-}
-setInterval(setClock, 1000);
-
-function catEmoji(cat){
-  return ({Hotdogs:"🌭", Bebidas:"🥤", Snacks:"🍟", Extras:"➕", Promos:"🏷️"})[cat] || "📦";
-}
-
-function renderCats(){
-  const wrap = el("cats");
-  wrap.innerHTML = "";
-
-  for (const cat of CATS){
-    const count = state.products.filter(p => p.active && p.category === cat).length;
-    const b = document.createElement("button");
-    b.className = "cat" + (state.category === cat ? " active":"");
-    b.innerHTML = `<span>${catEmoji(cat)}</span><span>${cat}</span><span class="count">${count}</span>`;
-    b.onclick = () => { state.category = cat; renderCats(); renderGrid(); };
-    wrap.appendChild(b);
-  }
-}
-
-function renderGrid(){
-  const grid = el("grid");
-  grid.innerHTML = "";
-
-  const list = state.products
-    .filter(p => p.active && (state.category === "Promos" ? p.category === "Promos" : p.category === state.category))
-    .sort((a,b)=>a.name.localeCompare(b.name, "es"));
-
-  if (list.length === 0){
-    const div = document.createElement("div");
-    div.className = "smallnote";
-    div.style.padding = "10px 2px";
-    div.textContent = "No hay productos aquí. Ve a Admin para agregar.";
-    grid.appendChild(div);
-    return;
-  }
-
-  for (const p of list){
-    const card = document.createElement("div");
-    card.className = "cardProd";
-    card.onclick = () => addToCart(p.id);
-
-    const img = document.createElement("div");
-    img.className = "prodImg";
-    if (p.imgDataUrl){
-      img.innerHTML = `<img alt="${p.name}" src="${p.imgDataUrl}">`;
-    } else {
-      img.textContent = catEmoji(p.category);
-    }
-
-    const body = document.createElement("div");
-    body.className = "prodBody";
-    body.innerHTML = `
-      <div class="prodName">${escapeHtml(p.name)}</div>
-      <div class="prodMeta">
-        <div class="prodCat">${p.category}</div>
-        <div class="prodPrice">${moneyFromCents(p.priceCents)}</div>
-      </div>
-    `;
-
-    card.appendChild(img);
-    card.appendChild(body);
-    grid.appendChild(card);
-  }
-}
-
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, (m)=>({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[m]));
-}
-
-function addToCart(productId){
-  const p = state.products.find(x=>x.id === productId);
-  if (!p) return;
-
-  const existing = state.cart.get(productId);
-  if (existing) existing.qty += 1;
-  else state.cart.set(productId, { product: p, qty: 1 });
-
-  renderCart();
-}
-
-function decItem(productId){
-  const it = state.cart.get(productId);
-  if (!it) return;
-  it.qty -= 1;
-  if (it.qty <= 0) state.cart.delete(productId);
-  renderCart();
-}
-
-function incItem(productId){
-  const it = state.cart.get(productId);
-  if (!it) return;
-  it.qty += 1;
-  renderCart();
-}
-
-function delItem(productId){
-  state.cart.delete(productId);
-  renderCart();
-}
-
-function promoAppliesToday(promo){
-  const d = new Date().getDay(); // 0=Dom ... 6=Sab
-  return Array.isArray(promo.days) ? promo.days.includes(d) : true;
-}
-
-function calcTotals(){
-  let subtotal = 0;
-  for (const it of state.cart.values()){
-    subtotal += it.product.priceCents * it.qty;
-  }
-
-  let discount = 0;
-  const promo = state.promos.find(p => String(p.id) === String(state.selectedPromoId));
-  if (promo && promo.active && promoAppliesToday(promo)){
-    if (promo.type === "amount_off"){
-      discount = Math.min(subtotal, promo.valueCents);
-    } else if (promo.type === "fixed_total"){
-      if (subtotal >= promo.valueCents) discount = subtotal - promo.valueCents;
-    }
-  }
-
-  const total = Math.max(0, subtotal - discount);
-  return { subtotal, discount, total };
-}
-
-function renderCart(){
-  const list = el("cartList");
-  list.innerHTML = "";
-
-  if (state.cart.size === 0){
-    const div = document.createElement("div");
-    div.className = "smallnote";
-    div.style.padding = "10px 2px";
-    div.textContent = "Sin productos. Toca algo del catálogo.";
-    list.appendChild(div);
-  } else {
-    for (const [id, it] of state.cart.entries()){
-      const lineTotal = it.product.priceCents * it.qty;
-
-      const row = document.createElement("div");
-      row.className = "item";
-      row.innerHTML = `
-        <div>
-          <div class="itemTitle">${escapeHtml(it.product.name)}</div>
-          <div class="itemSub">${it.product.category} • ${moneyFromCents(it.product.priceCents)} c/u</div>
-        </div>
-        <div class="itemRight">
-          <div class="lineTotal">${moneyFromCents(lineTotal)}</div>
-          <div class="qty">
-            <button type="button" aria-label="menos">-</button>
-            <div class="n">${it.qty}</div>
-            <button type="button" aria-label="más">+</button>
-            <button type="button" class="del" aria-label="borrar">Borrar</button>
-          </div>
-        </div>
-      `;
-
-      const btns = row.querySelectorAll("button");
-      btns[0].onclick = () => decItem(id);
-      btns[1].onclick = () => incItem(id);
-      btns[2].onclick = () => delItem(id);
-
-      list.appendChild(row);
-    }
-  }
-
-  const { subtotal, discount, total } = calcTotals();
-  el("subtotal").textContent = moneyFromCents(subtotal);
-  el("discount").textContent = moneyFromCents(discount);
-  el("total").textContent = moneyFromCents(total);
-
-  el("btnPrepare").disabled = state.cart.size === 0;
-}
-
-function renderPromoSelect(){
-  const sel = el("promoSelect");
-  sel.innerHTML = "";
-
-  const optNone = document.createElement("option");
-  optNone.value = "none";
-  optNone.textContent = "Sin promo";
-  sel.appendChild(optNone);
-
-  for (const p of state.promos){
-    const opt = document.createElement("option");
-    opt.value = String(p.id);
-    const today = promoAppliesToday(p) ? " (hoy)" : " (no hoy)";
-    const val = moneyFromCents(p.valueCents);
-    const label = p.type === "amount_off" ? `-${val}` : `Total ${val}`;
-    opt.textContent = `${p.name} • ${label}${today}`;
-    sel.appendChild(opt);
-  }
-
-  sel.value = state.selectedPromoId;
-  sel.onchange = () => {
-    state.selectedPromoId = sel.value;
-    renderCart();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return {
+    dateKey: `${yyyy}-${mm}-${dd}`,
+    monthKey: `${yyyy}-${mm}`,
+    createdAt: new Date().toISOString()
   };
 }
 
-async function saveSale(){
-  const { subtotal, discount, total } = calcTotals();
-  if (state.cart.size === 0) return;
+// ---------- Reloj ----------
+function startClock(){
+  const clock = el("clock");
+  if (!clock) return;
+  const tick = ()=>{
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    clock.textContent = `${hh}:${mm}`;
+  };
+  tick();
+  setInterval(tick, 10000);
+}
 
-  const d = new Date();
-  const keys = nowKeys(d);
+// ---------- Modal ----------
+function openPayModal(){
+  const m = el("payModal");
+  if (!m) return;
+  m.classList.add("show");
+  m.setAttribute("aria-hidden","false");
+}
+function closePayModal(){
+  const m = el("payModal");
+  if (!m) return;
+  m.classList.remove("show");
+  m.setAttribute("aria-hidden","true");
+}
 
-  const items = [...state.cart.values()].map(it => ({
-    productId: it.product.id,
-    name: it.product.name,
-    category: it.product.category,
-    priceCents: it.product.priceCents,
-    qty: it.qty,
-    lineTotalCents: it.product.priceCents * it.qty
-  }));
+// ---------- Promos ----------
+function isPromoAllowedToday(p){
+  const days = p.days || [];
+  if (!Array.isArray(days) || days.length === 0) return true;
+  return days.includes(new Date().getDay()); // 0 dom ... 6 sab
+}
 
-  const promo = state.promos.find(p => String(p.id) === String(state.selectedPromoId));
+function computeDiscountCents(subtotal){
+  const promo = PROMOS.find(p =>
+    String(p.id) === String(selectedPromoId) &&
+    p.active &&
+    isPromoAllowedToday(p)
+  );
+  if (!promo) return 0;
+
+  if (promo.type === "amount_off"){
+    return Math.min(promo.valueCents, subtotal);
+  }
+  if (promo.type === "fixed_total"){
+    return subtotal > promo.valueCents ? (subtotal - promo.valueCents) : 0;
+  }
+  return 0;
+}
+
+async function loadPromos(){
+  PROMOS = await DB.getAll("promos");
+  const sel = el("promoSelect");
+  const hint = el("promoHint");
+  if (!sel) return;
+
+  const active = PROMOS.filter(p => p.active && isPromoAllowedToday(p));
+
+  sel.innerHTML = `<option value="">Sin promo</option>` + active.map(p=>{
+    const label = p.type === "amount_off"
+      ? `${p.name} (-${fmt(p.valueCents)})`
+      : `${p.name} (Total ${fmt(p.valueCents)})`;
+    return `<option value="${p.id}">${label}</option>`;
+  }).join("");
+
+  selectedPromoId = "";
+  sel.value = "";
+
+  if (hint){
+    hint.textContent = active.length ? "Promos activas hoy." : "Activa promos por días en Admin.";
+  }
+
+  sel.onchange = ()=>{
+    selectedPromoId = sel.value || "";
+    renderTotals();
+  };
+}
+
+// ---------- Categorías (ORDEN FIJO) ----------
+const CATEGORY_ORDER = ["Hotdogs", "Snacks", "Bebidas", "Extras"];
+
+function categoriesFromProducts(){
+  const found = new Set(PRODUCTS.filter(p=>p.active).map(p=>p.category));
+  const ordered = [];
+
+  // Primero el orden que quieres
+  for (const c of CATEGORY_ORDER){
+    if (found.has(c)) ordered.push(c);
+  }
+  // Luego cualquier otra categoría nueva al final
+  for (const c of found){
+    if (!ordered.includes(c)) ordered.push(c);
+  }
+  return ordered;
+}
+
+function renderCategories(){
+  const host = el("cats");
+  if (!host) return;
+
+  const cats = categoriesFromProducts();
+  let current = host.getAttribute("data-current");
+
+  if (!current || !cats.includes(current)){
+    current = cats[0] || "";
+  }
+  host.setAttribute("data-current", current);
+
+  host.innerHTML = cats.map(c=>{
+    const active = c === current ? " active" : "";
+    const count = PRODUCTS.filter(p=>p.active && p.category===c).length;
+    return `
+      <div class="cat${active}" data-cat="${c}">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div>${c}</div>
+          <div class="count">${count} items</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  host.querySelectorAll(".cat").forEach(btn=>{
+    btn.onclick = ()=>{
+      host.setAttribute("data-current", btn.dataset.cat);
+      renderCategories();
+      renderGrid();
+    };
+  });
+}
+
+// ---------- Productos ----------
+function imgHTML(p){
+  if (!p.imgDataUrl) return `<div class="prodImg">Sin foto</div>`;
+  return `
+    <div class="prodImg">
+      <img
+        src="${p.imgDataUrl}"
+        alt="${p.name}"
+        loading="lazy"
+        onerror="this.onerror=null; this.style.display='none'; this.parentElement.textContent='Sin foto';"
+      />
+    </div>
+  `;
+}
+
+function renderGrid(){
+  const host = el("grid");
+  const catsHost = el("cats");
+  if (!host || !catsHost) return;
+
+  const current = catsHost.getAttribute("data-current") || "";
+  const list = PRODUCTS
+    .filter(p=>p.active && (!current || p.category===current))
+    .sort((a,b)=>a.name.localeCompare(b.name,"es"));
+
+  host.innerHTML = list.map(p=>`
+    <div class="cardProd" data-id="${p.id}">
+      ${imgHTML(p)}
+      <div class="prodBody">
+        <div class="prodName">${p.name}</div>
+        <div class="prodMeta">
+          <div class="prodCat">${p.category}</div>
+          <div class="prodPrice">${fmt(p.priceCents)}</div>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  host.querySelectorAll(".cardProd").forEach(card=>{
+    card.onclick = ()=>{
+      const p = PRODUCTS.find(x=>x.id===card.dataset.id);
+      if (p) addToCart(p);
+    };
+  });
+}
+
+// ---------- Carrito ----------
+function addToCart(p){
+  const ex = CART.find(x=>x.id===p.id);
+  if (ex) ex.qty += 1;
+  else {
+    CART.push({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      priceCents: p.priceCents,
+      qty: 1,
+      imgDataUrl: p.imgDataUrl || ""
+    });
+  }
+  renderCart();
+}
+
+function cartSubtotalCents(){
+  return CART.reduce((acc,it)=> acc + it.priceCents * it.qty, 0);
+}
+
+function cartTotals(){
+  const subtotal = cartSubtotalCents();
+  const discount = computeDiscountCents(subtotal);
+  const total = Math.max(0, subtotal - discount);
+
+  const promo = PROMOS.find(p =>
+    String(p.id) === String(selectedPromoId) &&
+    p.active &&
+    isPromoAllowedToday(p)
+  );
+
+  return {
+    subtotal,
+    discount,
+    total,
+    promoName: promo ? promo.name : ""
+  };
+}
+
+function renderTotals(){
+  const { subtotal, discount, total } = cartTotals();
+  const a = el("subtotal");
+  const b = el("discount");
+  const c = el("total");
+  if (a) a.textContent = fmt(subtotal);
+  if (b) b.textContent = fmt(discount);
+  if (c) c.textContent = fmt(total);
+}
+
+function renderCart(){
+  const host = el("cartList");
+  if (!host) return;
+
+  if (!CART.length){
+    host.innerHTML = `<div class="smallnote">Agrega productos para iniciar.</div>`;
+    renderTotals();
+    return;
+  }
+
+  host.innerHTML = CART.map(it=>`
+    <div class="item">
+      <div>
+        <div class="itemTitle">${it.name}</div>
+        <div class="itemSub">${it.category} • ${fmt(it.priceCents)}</div>
+      </div>
+
+      <div class="itemRight">
+        <div class="qty">
+          <button data-dec="${it.id}">-</button>
+          <div class="n">${it.qty}</div>
+          <button data-inc="${it.id}">+</button>
+        </div>
+
+        <div class="lineTotal">${fmt(it.priceCents * it.qty)}</div>
+        <button class="del" data-del="${it.id}">Quitar</button>
+      </div>
+    </div>
+  `).join("");
+
+  host.querySelectorAll("[data-inc]").forEach(b=>{
+    b.onclick = ()=>{
+      const it = CART.find(x=>x.id===b.dataset.inc);
+      if (!it) return;
+      it.qty += 1;
+      renderCart();
+    };
+  });
+
+  host.querySelectorAll("[data-dec]").forEach(b=>{
+    b.onclick = ()=>{
+      const it = CART.find(x=>x.id===b.dataset.dec);
+      if (!it) return;
+      it.qty -= 1;
+      if (it.qty <= 0) CART = CART.filter(x=>x.id!==it.id);
+      renderCart();
+    };
+  });
+
+  host.querySelectorAll("[data-del]").forEach(b=>{
+    b.onclick = ()=>{
+      CART = CART.filter(x=>x.id!==b.dataset.del);
+      renderCart();
+    };
+  });
+
+  renderTotals();
+}
+
+// ---------- Guardar venta ----------
+async function saveSale(paidCents){
+  const { subtotal, discount, total, promoName } = cartTotals();
+  const keys = todayKeys();
+
   const sale = {
-    createdAt: d.toISOString(),
+    createdAt: keys.createdAt,
     dateKey: keys.dateKey,
     monthKey: keys.monthKey,
-    items,
+
+    promoName: promoName || "",
+
     subtotalCents: subtotal,
     discountCents: discount,
     totalCents: total,
-    promoId: promo ? promo.id : null,
-    promoName: promo ? promo.name : null,
+
+    paidCents: paidCents,
+    changeCents: Math.max(0, paidCents - total),
+
+    items: CART.map(it=>({
+      id: it.id,
+      name: it.name,
+      category: it.category,
+      qty: it.qty,
+      priceCents: it.priceCents,
+      lineTotalCents: it.priceCents * it.qty
+    }))
   };
 
   await DB.add("sales", sale);
 
-  state.cart.clear();
-  state.selectedPromoId = "none";
-  renderPromoSelect();
+  // limpiar carrito
+  CART = [];
+  selectedPromoId = "";
+  const sel = el("promoSelect");
+  if (sel) sel.value = "";
+
   renderCart();
 
-  el("subtitle").textContent = `Guardado • ${keys.dateKey}`;
-  setTimeout(()=> el("subtitle").textContent = "Local • Offline", 1800);
+  // limpiar modal inputs
+  const payWith = el("payWith");
+  const payChange = el("payChange");
+  const payWith2 = el("payWith2"); // existe solo en tu versión 2 pasos
+  if (payWith) payWith.value = "";
+  if (payChange) payChange.value = "";
+  if (payWith2) payWith2.value = "";
+
+  closePayModal();
+  alert("Cobro registrado ✅");
 }
 
-/* ===== MODAL COBRO + CAMBIO ===== */
-function openPayModal(){
-  const { total } = calcTotals();
-  if (state.cart.size === 0) return;
+// ---------- Cobro (BOTÓN COBRAR + CONFIRMAR) ----------
+function setupPay(){
+  const btnPrepare = el("btnPrepare");      // COBRAR
+  const btnClose = el("btnPayClose");       // cerrar modal
+  const btnConfirm = el("btnConfirmPay");   // confirmar
+  const payWith = el("payWith");            // input monto
+  const payChange = el("payChange");        // input cambio (puede ser visible en paso 2)
+  const payTotalText = el("payTotalText");  // texto total en modal
 
+  // Vaciar
+  const btnClear = el("btnClear");
+  if (btnClear){
+    btnClear.onclick = ()=>{
+      if (!CART.length) return;
+      if (!confirm("¿Vaciar el pedido?")) return;
+      CART = [];
+      selectedPromoId = "";
+      const sel = el("promoSelect");
+      if (sel) sel.value = "";
+      renderCart();
+    };
+  }
+
+  // Abrir modal al cobrar
+  if (btnPrepare){
+    btnPrepare.onclick = ()=>{
+      if (!CART.length) return alert("Agrega productos para cobrar.");
+
+      const { total } = cartTotals();
+      if (payTotalText) payTotalText.textContent = fmt(total);
+
+      // limpiar inputs
+      if (payWith) payWith.value = "";
+      if (payChange) payChange.value = "";
+
+      openPayModal();
+      setTimeout(()=> payWith?.focus(), 80);
+    };
+  }
+
+  // Cerrar
+  if (btnClose){
+    btnClose.onclick = ()=> closePayModal();
+  }
+
+  // Cerrar tocando afuera
   const modal = el("payModal");
-  modal.classList.add("show");
-  modal.setAttribute("aria-hidden", "false");
+  if (modal){
+    modal.addEventListener("click", (e)=>{
+      if (e.target === modal) closePayModal();
+    });
+  }
 
-  el("payTotalText").textContent = `Total: ${moneyFromCents(total)}`;
-  el("payWith").value = "";
-  el("payChange").value = moneyFromCents(0);
+  // Confirmar cobro (GUARDA)
+  if (btnConfirm){
+    btnConfirm.onclick = async ()=>{
+      // si tu flujo 2 pasos lo deshabilitó, respetamos
+      if (btnConfirm.disabled) return;
 
-  el("payWith").oninput = () => {
-    const payCents = centsFromMoneyInput(el("payWith").value);
-    const change = Math.max(0, payCents - total);
-    el("payChange").value = moneyFromCents(change);
-  };
+      const { total } = cartTotals();
+      const paidCents = inputToCents(payWith?.value);
 
-  el("btnPayClose").onclick = closePayModal;
+      if (paidCents < total){
+        if (payChange) payChange.value = fmt(Math.abs(paidCents - total));
+        return alert("El pago no alcanza. Ajusta el monto.");
+      }
 
-  el("btnConfirmPay").onclick = async () => {
-    const payCents = centsFromMoneyInput(el("payWith").value);
-    if (payCents < total){
-      alert("El pago es menor al total.");
-      return;
-    }
-    await saveSale();
-    closePayModal();
-  };
+      if (payChange) payChange.value = fmt(Math.max(0, paidCents - total));
 
-  setTimeout(()=> el("payWith").focus(), 50);
+      try{
+        await saveSale(paidCents);
+      }catch(err){
+        console.error(err);
+        alert("Error guardando la venta. Revisa consola.");
+      }
+    };
+  }
 }
 
-function closePayModal(){
-  const modal = el("payModal");
-  modal.classList.remove("show");
-  modal.setAttribute("aria-hidden", "true");
-}
-/* =============================== */
-
-async function init(){
+// ---------- Init ----------
+(async function init(){
   await seedIfEmpty();
-  state.products = (await DB.getAll("products")).filter(Boolean);
-  state.promos = (await DB.getAll("promos")).filter(Boolean).sort((a,b)=> (a.id||0)-(b.id||0));
 
-  renderCats();
+  startClock();
+
+  PRODUCTS = await DB.getAll("products");
+  await loadPromos();
+
+  renderCategories();
   renderGrid();
-  renderPromoSelect();
   renderCart();
+  renderTotals();
 
-  el("btnClear").onclick = () => { state.cart.clear(); renderCart(); };
-
-  // Ahora el botón COBRAR abre el modal
-  el("btnPrepare").onclick = () => openPayModal();
-
-  setClock();
-}
-init();
+  setupPay();
+})();
